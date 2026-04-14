@@ -758,19 +758,3 @@ export default function PublicHome() {
     </div>
   );
 }
-main>
-      
-      {/* Footer */}
-      <footer className="bg-white dark:bg-gray-800 border-t">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="text-center text-sm text-gray-600 dark:text-gray-400">
-            {whitelabelConfig?.footerText || "Powered by SupportHub"}
-          </div>
-        </div>
-      </footer>
-      
-      {/* Live Chat Widget */}
-      {isChatEnabled && <LiveChatWidget />}
-    </div>
-  );
-}
