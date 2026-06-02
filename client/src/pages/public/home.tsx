@@ -10,66 +10,48 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  MessageSquare, 
-  Search, 
-  Send, 
-  CheckCircle, 
-  Clock, 
+import {
+  MessageSquare,
+  Search,
+  Send,
+  CheckCircle,
+  Clock,
   AlertCircle,
   Mail,
   Phone,
-  Users,
   BookOpen,
   Eye,
   ThumbsUp,
   ThumbsDown,
-  Tag,
-  Calendar
+  ArrowRight,
+  Zap,
+  Shield,
+  Headphones,
+  TicketIcon,
+  ChevronRight,
+  Loader2,
+  Star,
 } from "lucide-react";
 import { Link } from "wouter";
-import { 
-  insertTicketSchema, 
+import {
+  insertTicketSchema,
   type InsertTicket,
   type Ticket,
-  type KnowledgeBase 
+  type KnowledgeBase,
 } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useWhitelabelContext } from "@/components/whitelabel-provider";
 import LiveChatWidget from "@/components/live-chat-widget";
 
-const priorityColors = {
-  low: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-  medium: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300", 
-  high: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
-};
-
-const statusColors = {
-  open: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
-  "in-progress": "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300",
-  resolved: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-  closed: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
-};
-
-const statusIcons = {
-  open: Clock,
-  "in-progress": AlertCircle,
-  resolved: CheckCircle,
-  closed: CheckCircle
-};
-
 export default function PublicHome() {
   const { toast } = useToast();
-  const { config: whitelabelConfig } = useWhitelabelContext();
-  
-  // Get chat enabled setting from public settings
-  const { data: chatSettings } = useQuery({
-    queryKey: ["/api/public/settings/chat"]
-  });
-  
-  const isChatEnabled = chatSettings?.enabled === true;
+  const { config: wl } = useWhitelabelContext();
+  const brand = wl?.primaryColor || "#3b82f6";
+
+  const { data: chatSettings } = useQuery({ queryKey: ["/api/public/settings/chat"] });
+  const isChatEnabled = (chatSettings as any)?.enabled === true;
+
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState<"id" | "email">("id");
   const [searchResults, setSearchResults] = useState<Ticket[]>([]);
@@ -77,277 +59,269 @@ export default function PublicHome() {
   const [selectedKbCategory, setSelectedKbCategory] = useState("all");
   const [selectedArticle, setSelectedArticle] = useState<KnowledgeBase | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    watch,
-    setValue,
-    reset,
-    formState: { errors },
-  } = useForm<InsertTicket>({
-    resolver: zodResolver(insertTicketSchema),
-    defaultValues: {
-      priority: "medium",
-      channel: "email"
-    },
-  });
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors } } =
+    useForm<InsertTicket>({
+      resolver: zodResolver(insertTicketSchema),
+      defaultValues: { priority: "medium", channel: "email" },
+    });
 
   const createTicketMutation = useMutation({
-    mutationFn: async (data: InsertTicket) => {
-      return apiRequest("POST", "/api/tickets", data);
-    },
+    mutationFn: async (data: InsertTicket) => apiRequest("POST", "/api/tickets", data),
     onSuccess: async (response) => {
       const ticket = await response.json();
-      toast({
-        title: "Ticket Created!",
-        description: `Your ticket #${ticket.id || 'ID'} has been created successfully.`,
-      });
+      toast({ title: "Ticket submitted!", description: `Reference #${ticket.id || "—"} has been created. We'll be in touch shortly.` });
       reset();
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create ticket.",
-        variant: "destructive",
-      });
-    },
+    onError: (error: Error) => toast({ title: "Submission failed", description: error.message, variant: "destructive" }),
   });
 
   const searchTicketsMutation = useMutation({
     mutationFn: async ({ query, type }: { query: string; type: "id" | "email" }) => {
-      const endpoint = type === "id" 
+      const endpoint = type === "id"
         ? `/api/public/tickets/${query}`
         : `/api/public/tickets/search?email=${encodeURIComponent(query)}`;
-      
       const response = await apiRequest("GET", endpoint);
       return response.json();
     },
     onSuccess: (data) => {
       const tickets = Array.isArray(data) ? data : [data];
       setSearchResults(tickets.filter(Boolean));
-      
-      if (tickets.length === 0) {
-        toast({
-          title: "No tickets found",
-          description: "No tickets match your search criteria.",
-        });
-      }
+      if (!tickets.length) toast({ title: "No results", description: "No tickets match your search." });
     },
     onError: (error: Error) => {
-      toast({
-        title: "Search Error",
-        description: error.message || "Failed to search tickets.",
-        variant: "destructive",
-      });
+      toast({ title: "Search failed", description: error.message, variant: "destructive" });
       setSearchResults([]);
     },
   });
 
-  const onSubmit = (data: InsertTicket) => {
-    createTicketMutation.mutate(data);
-  };
+  const { data: kbCategories = [] } = useQuery<string[]>({ queryKey: ["/api/public/kb/categories"] });
 
-  const handleSearch = () => {
-    if (!searchQuery.trim()) {
-      toast({
-        title: "Search Required",
-        description: "Please enter a ticket ID or email.",
-        variant: "destructive",
-      });
-      return;
-    }
-    searchTicketsMutation.mutate({ query: searchQuery.trim(), type: searchType });
-  };
+  const { data: kbArticles = [], isLoading: kbLoading } = useQuery<KnowledgeBase[]>({
+    queryKey: ["/api/public/kb", { category: selectedKbCategory !== "all" ? selectedKbCategory : undefined, search: kbSearchQuery || undefined }],
+    queryFn: async () => {
+      let url = "/api/public/kb";
+      const p = new URLSearchParams();
+      if (selectedKbCategory !== "all") p.set("category", selectedKbCategory);
+      if (kbSearchQuery) p.set("search", kbSearchQuery);
+      if (p.toString()) url += `?${p.toString()}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
+  const rateArticleMutation = useMutation({
+    mutationFn: ({ id, helpful }: { id: string; helpful: boolean }) =>
+      apiRequest("POST", `/api/public/kb/${id}/rate`, { helpful }),
+    onSuccess: () => toast({ title: "Thanks for your feedback!" }),
+  });
 
   const watchedPriority = watch("priority");
   const watchedChannel = watch("channel");
 
-  const { data: kbCategories = [] } = useQuery<string[]>({
-    queryKey: ["/api/public/kb/categories"]
-  });
-
-  const { data: kbArticles = [], isLoading: kbLoading } = useQuery<KnowledgeBase[]>({
-    queryKey: ["/api/public/kb", { 
-      category: selectedKbCategory !== "all" ? selectedKbCategory : undefined,
-      search: kbSearchQuery || undefined
-    }],
-    queryFn: async () => {
-      let url = "/api/public/kb";
-      const params = new URLSearchParams();
-      if (selectedKbCategory !== "all") params.set("category", selectedKbCategory);
-      if (kbSearchQuery) params.set("search", kbSearchQuery);
-      if (params.toString()) url += `?${params.toString()}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Failed to fetch articles");
-      return response.json();
-    }
-  });
-
-  const rateArticleMutation = useMutation({
-    mutationFn: async ({ id, helpful }: { id: string; helpful: boolean }) => {
-      return apiRequest("POST", `/api/public/kb/${id}/rate`, { helpful });
-    },
-    onSuccess: () => {
-      toast({ title: "Thank you!", description: "Your feedback has been recorded." });
-    }
-  });
-
   return (
-    <div className="min-h-screen bg-background selection:bg-primary/10">
-      {/* Dynamic Header */}
-      <nav className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-3">
-              {whitelabelConfig?.logoUrl ? (
-                <img src={whitelabelConfig.logoUrl} alt="Logo" className="h-8 w-auto" />
-              ) : (
-                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                  <MessageSquare className="w-5 h-5 text-primary-foreground" />
-                </div>
-              )}
-              <span className="text-lg font-bold tracking-tight text-foreground">
-                {whitelabelConfig?.companyName || "SupportHub"}
-              </span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <Link href="/customer/login">
-                <Button variant="ghost" size="sm" className="hidden sm:flex text-muted-foreground hover:text-foreground">
-                  Login
-                </Button>
-              </Link>
-              <Link href="/customer/register">
-                <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm">
-                  Sign Up
-                </Button>
-              </Link>
-            </div>
+    <div className="min-h-screen bg-background">
+      {/* ── NAV ── */}
+      <nav className="sticky top-0 z-50 border-b border-border/60 bg-background/90 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {wl?.logoUrl ? (
+              <img src={wl.logoUrl} alt={wl.companyName || "Logo"} className="h-8 w-auto" />
+            ) : (
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: brand }}>
+                <Headphones className="w-4 h-4 text-white" />
+              </div>
+            )}
+            <span className="text-[15px] font-bold text-foreground tracking-tight">
+              {wl?.companyName || "SupportHub"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Link href="/customer/login">
+              <Button variant="ghost" size="sm" className="text-sm text-muted-foreground hidden sm:flex">
+                Sign in
+              </Button>
+            </Link>
+            <Link href="/customer/register">
+              <Button size="sm" className="text-sm gap-1.5" style={{ background: brand }}>
+                Get started <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            </Link>
           </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-hero-pattern py-20 px-4">
-        <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:32px_32px]" />
-        <div className="relative max-w-4xl mx-auto text-center space-y-6">
-          <div className="inline-flex items-center px-4 py-1.5 rounded-full border border-white/10 bg-white/5 backdrop-blur-sm text-sm font-medium text-white/80 mb-4 animate-fade-in shadow-xl">
-            <Badge className="mr-2 bg-primary/20 text-primary-foreground border-none">New</Badge>
+      {/* ── HERO ── */}
+      <section className="relative overflow-hidden bg-hero-pattern">
+        {/* Subtle grid */}
+        <div
+          className="absolute inset-0 opacity-[0.04]"
+          style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='32' height='32' viewBox='0 0 32 32' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 .5h32M.5 0v32' stroke='white' stroke-opacity='1'/%3E%3C/svg%3E\")", backgroundSize: "32px 32px" }}
+        />
+
+        <div className="relative max-w-5xl mx-auto px-5 sm:px-8 pt-20 pb-28 text-center">
+          {/* Pill badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 text-[13px] font-medium text-white/70 mb-8 animate-fade-in">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             Integrated self-service support portal
           </div>
-          <h1 className="text-4xl md:text-6xl font-extrabold text-white tracking-tight animate-slide-up">
-            Help Center
+
+          <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold text-white tracking-tight leading-[1.05] mb-6 animate-slide-up">
+            {wl?.heroTitle || "Help Center"}
           </h1>
-          <p className="text-lg md:text-xl text-white/60 max-w-2xl mx-auto animate-slide-up [animation-delay:100ms]">
-            Find answers to common questions or connect with our support team for personalized assistance.
+          <p className="text-lg sm:text-xl text-white/55 max-w-2xl mx-auto mb-10 leading-relaxed animate-slide-up [animation-delay:80ms]">
+            {wl?.heroSubtitle || "Find answers, submit requests, and track your support tickets — all in one place."}
           </p>
-          
-          <div className="max-w-2xl mx-auto pt-8 animate-slide-up [animation-delay:200ms]">
-            <div className="relative group">
-              <div className="absolute -inset-1 bg-gradient-to-r from-primary to-blue-600 rounded-2xl blur opacity-25 group-hover:opacity-40 transition duration-1000 group-hover:duration-200" />
-              <div className="relative flex items-center bg-white dark:bg-gray-800 rounded-2xl p-2 shadow-2xl overflow-hidden ring-1 ring-white/10">
-                <Search className="w-5 h-5 text-muted-foreground ml-3" />
-                <input 
-                  type="text" 
-                  className="flex-1 bg-transparent border-none focus:ring-0 text-foreground px-3 py-3 text-lg placeholder:text-muted-foreground"
-                  placeholder="Search knowledge base..."
-                  value={kbSearchQuery}
-                  onChange={(e) => setKbSearchQuery(e.target.value)}
-                />
-                <Button className="rounded-xl px-6 py-6 h-auto bg-primary hover:bg-primary/90 hidden sm:flex">
-                  Search
-                </Button>
-              </div>
+
+          {/* Search bar */}
+          <div className="max-w-2xl mx-auto animate-slide-up [animation-delay:160ms]">
+            <div className="relative flex items-center bg-white rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/20">
+              <Search className="w-5 h-5 text-gray-400 ml-4 flex-shrink-0" />
+              <input
+                type="text"
+                className="flex-1 bg-transparent border-none outline-none text-gray-900 px-3 py-4 text-base placeholder:text-gray-400"
+                placeholder="Search the knowledge base…"
+                value={kbSearchQuery}
+                onChange={(e) => setKbSearchQuery(e.target.value)}
+              />
+              <Button
+                className="m-1.5 rounded-xl px-5 h-10 text-sm font-semibold flex-shrink-0"
+                style={{ background: brand }}
+              >
+                Search
+              </Button>
             </div>
+          </div>
+
+          {/* Trust stats */}
+          <div className="flex flex-wrap justify-center gap-8 mt-12 animate-fade-in [animation-delay:300ms]">
+            {[
+              { label: "Avg. response time", value: "< 2h" },
+              { label: "Customer satisfaction", value: "98%" },
+              { label: "Issues resolved", value: "50k+" },
+            ].map(({ label, value }) => (
+              <div key={label} className="text-center">
+                <p className="text-2xl font-extrabold text-white">{value}</p>
+                <p className="text-[12px] text-white/45 font-medium mt-0.5">{label}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10 pb-20">
-        <Tabs defaultValue="kb" className="space-y-12">
-          {/* Enhanced Tabs Trigger */}
-          <div className="flex justify-center">
-            <TabsList className="glass inline-flex h-14 p-1.5 rounded-2xl border bg-white/50 backdrop-blur-xl shadow-xl">
-              <TabsTrigger value="kb" className="rounded-xl px-8 h-full data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
-                Knowledge Base
-              </TabsTrigger>
-              <TabsTrigger value="create" className="rounded-xl px-8 h-full data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
-                Create Ticket
-              </TabsTrigger>
-              <TabsTrigger value="status" className="rounded-xl px-8 h-full data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-lg transition-all duration-300">
-                Check Status
-              </TabsTrigger>
+      {/* ── FEATURE STRIP ── */}
+      <section className="border-b border-border bg-background-secondary">
+        <div className="max-w-7xl mx-auto px-5 sm:px-8 py-10 grid grid-cols-1 sm:grid-cols-3 gap-6">
+          {[
+            { icon: BookOpen, color: "surface-blue",   title: "Knowledge Base",    desc: "Browse hundreds of articles and guides" },
+            { icon: TicketIcon, color: "surface-purple", title: "Submit a Ticket",   desc: "Reach our support team directly" },
+            { icon: Search,    color: "surface-amber",  title: "Track your Request", desc: "Real-time status on all your tickets" },
+          ].map(({ icon: Icon, color, title, desc }) => (
+            <div key={title} className="flex items-start gap-4 p-5 rounded-xl bg-card border border-border hover:border-border-strong hover:shadow-sm transition-all group">
+              <div className={`icon-container-md rounded-xl flex-shrink-0 ${color}`}>
+                <Icon className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{title}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── MAIN CONTENT ── */}
+      <main className="max-w-7xl mx-auto px-5 sm:px-8 py-14">
+        <Tabs defaultValue="kb">
+          {/* Tab bar */}
+          <div className="flex justify-center mb-10">
+            <TabsList className="inline-flex bg-muted rounded-xl p-1 gap-1 h-auto">
+              {[
+                { value: "kb",     label: "Knowledge Base",  icon: BookOpen },
+                { value: "create", label: "Create Ticket",   icon: Send },
+                { value: "status", label: "Check Status",    icon: Search },
+              ].map(({ value, label, icon: Icon }) => (
+                <TabsTrigger
+                  key={value}
+                  value={value}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-muted-foreground data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-all"
+                >
+                  <Icon className="w-4 h-4" />
+                  {label}
+                </TabsTrigger>
+              ))}
             </TabsList>
           </div>
 
-          {/* Knowledge Base Content */}
+          {/* ── KB TAB ── */}
           <TabsContent value="kb" className="animate-fade-in focus-visible:outline-none">
             {selectedArticle ? (
               <div className="max-w-4xl mx-auto animate-slide-up">
-                <Card className="border-none shadow-2xl rounded-3xl overflow-hidden overflow-y-auto max-h-[80vh]">
-                  <CardHeader className="bg-muted/30 pb-8 pt-10 px-8 lg:px-12 border-b">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                      <Button 
-                        variant="outline" 
+                <Card className="card-elevated rounded-2xl overflow-hidden border border-border">
+                  <CardHeader className="bg-background-secondary border-b px-8 pt-8 pb-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+                      <Button
+                        variant="outline"
                         size="sm"
                         onClick={() => setSelectedArticle(null)}
-                        className="w-fit rounded-xl border-dashed"
+                        className="w-fit gap-1.5 text-xs"
                       >
-                        ← Back to Articles
+                        <ChevronRight className="w-3.5 h-3.5 rotate-180" />
+                        Back to Articles
                       </Button>
-                      <div className="flex items-center gap-6 text-[13px] text-muted-foreground font-medium">
-                        <span className="flex items-center gap-1.5 bg-background px-3 py-1 rounded-full border shadow-sm">
-                          <Eye className="w-4 h-4 text-blue-500" />
-                          {selectedArticle.views} views
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1.5 bg-card px-3 py-1 rounded-full border">
+                          <Eye className="w-3.5 h-3.5 text-blue-500" />{selectedArticle.views} views
                         </span>
-                        <span className="flex items-center gap-1.5 bg-background px-3 py-1 rounded-full border shadow-sm">
-                          <Clock className="w-4 h-4 text-purple-500" />
-                          {selectedArticle.updatedAt ? new Date(selectedArticle.updatedAt).toLocaleDateString() : 'Active'}
+                        <span className="flex items-center gap-1.5 bg-card px-3 py-1 rounded-full border">
+                          <Clock className="w-3.5 h-3.5 text-purple-500" />
+                          {selectedArticle.updatedAt ? new Date(selectedArticle.updatedAt).toLocaleDateString() : "Recent"}
                         </span>
                       </div>
                     </div>
-                    <CardTitle className="text-3xl md:text-4xl font-extrabold text-foreground mb-4 leading-tight">
+                    <CardTitle className="text-2xl sm:text-3xl font-bold text-foreground leading-tight mb-4">
                       {selectedArticle.title}
                     </CardTitle>
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant="secondary" className="px-3 py-1 rounded-lg bg-primary/10 text-primary border-none text-[12px] uppercase tracking-wider font-bold">
+                      <Badge className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider rounded-lg" style={{ background: `${brand}18`, color: brand, border: `1px solid ${brand}30` }}>
                         {selectedArticle.category}
                       </Badge>
                       {selectedArticle.tags?.map((tag) => (
-                        <Badge key={tag} variant="outline" className="px-3 py-1 rounded-lg text-[12px] font-medium text-muted-foreground border-gray-200">
-                          #{tag.toLowerCase()}
+                        <Badge key={tag} variant="outline" className="px-3 py-1 text-[11px] text-muted-foreground rounded-lg">
+                          #{tag}
                         </Badge>
                       ))}
                     </div>
                   </CardHeader>
-                  <CardContent className="p-8 lg:p-12">
-                    <div className="prose prose-blue dark:prose-invert max-w-none">
-                      <p className="text-lg text-foreground/80 leading-relaxed whitespace-pre-wrap">
-                        {selectedArticle.content}
-                      </p>
+                  <CardContent className="p-8 lg:p-10">
+                    <div className="prose prose-sm max-w-none text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                      {selectedArticle.content}
                     </div>
-                    
-                    <div className="mt-16 p-8 rounded-3xl bg-muted/30 border border-dashed border-muted-foreground/20 text-center space-y-6">
-                      <h4 className="text-xl font-bold text-foreground">Was this article helpful?</h4>
-                      <div className="flex items-center justify-center gap-4">
+
+                    <div className="mt-12 p-7 rounded-2xl bg-background-secondary border border-border text-center">
+                      <p className="text-sm font-semibold text-foreground mb-1">Was this article helpful?</p>
+                      <p className="text-xs text-muted-foreground mb-5">Your feedback helps us improve our documentation.</p>
+                      <div className="flex items-center justify-center gap-3">
                         <Button
                           variant="outline"
-                          size="lg"
+                          size="sm"
                           onClick={() => rateArticleMutation.mutate({ id: selectedArticle.id, helpful: true })}
                           disabled={rateArticleMutation.isPending}
-                          className="rounded-2xl px-8 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition-all shadow-sm"
+                          className="gap-2 rounded-xl border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300"
                         >
-                          <ThumbsUp className="w-5 h-5 mr-3 text-emerald-500" />
-                          Yes ({selectedArticle.helpful || 0})
+                          <ThumbsUp className="w-4 h-4 text-emerald-500" />
+                          Yes, helpful ({selectedArticle.helpful || 0})
                         </Button>
                         <Button
                           variant="outline"
-                          size="lg"
+                          size="sm"
                           onClick={() => rateArticleMutation.mutate({ id: selectedArticle.id, helpful: false })}
                           disabled={rateArticleMutation.isPending}
-                          className="rounded-2xl px-8 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 transition-all shadow-sm"
+                          className="gap-2 rounded-xl border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
                         >
-                          <ThumbsDown className="w-5 h-5 mr-3 text-red-500" />
-                          No ({selectedArticle.notHelpful || 0})
+                          <ThumbsDown className="w-4 h-4 text-red-400" />
+                          Not helpful ({selectedArticle.notHelpful || 0})
                         </Button>
                       </div>
                     </div>
@@ -355,78 +329,71 @@ export default function PublicHome() {
                 </Card>
               </div>
             ) : (
-              <div className="space-y-10 animate-fade-in">
-                {/* Category Filter Bar */}
+              <div className="space-y-8">
+                {/* Category chips */}
                 <div className="flex flex-wrap justify-center gap-2">
-                  <Button 
-                    variant={selectedKbCategory === "all" ? "default" : "outline"}
-                    className="rounded-full px-6"
-                    onClick={() => setSelectedKbCategory("all")}
-                  >
-                    All Topics
-                  </Button>
-                  {kbCategories.map((category) => (
-                    <Button 
-                      key={category}
-                      variant={selectedKbCategory === category ? "default" : "outline"}
-                      className="rounded-full px-6 capitalize"
-                      onClick={() => setSelectedKbCategory(category)}
+                  {["all", ...kbCategories].map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedKbCategory(cat)}
+                      className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all border ${
+                        selectedKbCategory === cat
+                          ? "text-white border-transparent shadow-sm"
+                          : "text-muted-foreground border-border bg-card hover:border-border-strong"
+                      }`}
+                      style={selectedKbCategory === cat ? { background: brand, borderColor: brand } : {}}
                     >
-                      {category}
-                    </Button>
+                      {cat === "all" ? "All Topics" : cat}
+                    </button>
                   ))}
                 </div>
 
                 {kbLoading ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {[1, 2, 3, 4, 5, 6].map((i) => (
-                      <div key={i} className="h-48 rounded-3xl skeleton" />
-                    ))}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {[...Array(6)].map((_, i) => <div key={i} className="h-48 rounded-2xl skeleton" />)}
                   </div>
                 ) : kbArticles.length === 0 ? (
-                  <div className="text-center py-20 bg-muted/20 rounded-3xl border border-dashed">
-                    <BookOpen className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
-                    <h3 className="text-xl font-bold text-foreground mb-2">No articles found</h3>
-                    <p className="text-muted-foreground">Try searching for something else or browse another category.</p>
+                  <div className="text-center py-20 rounded-2xl border border-dashed border-border bg-background-secondary">
+                    <BookOpen className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+                    <p className="font-semibold text-foreground mb-1">No articles found</p>
+                    <p className="text-sm text-muted-foreground">Try a different search or category.</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 stagger">
                     {kbArticles.map((article) => (
-                      <Card 
-                        key={article.id} 
-                        className="group card-interactive border-none shadow-sm hover:shadow-2xl transition-all duration-300 rounded-3xl overflow-hidden animate-slide-up"
+                      <article
+                        key={article.id}
                         onClick={() => setSelectedArticle(article)}
+                        className="group card-interactive flex flex-col p-6 rounded-2xl cursor-pointer animate-fade-in"
                       >
-                        <CardContent className="p-7">
-                          <div className="flex items-center justify-between mb-4">
-                            <Badge variant="outline" className="px-3 py-1 rounded-lg bg-background font-bold text-[10px] uppercase tracking-wider text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground group-hover:border-primary transition-colors">
-                              {article.category}
-                            </Badge>
-                            <span className="text-[12px] text-muted-foreground font-medium flex items-center gap-1">
-                              <Eye className="w-3.5 h-3.5" />
-                              {article.views}
-                            </span>
-                          </div>
-                          <h3 className="font-extrabold text-lg mb-3 leading-tight group-hover:text-primary transition-colors line-clamp-2">
-                            {article.title}
-                          </h3>
-                          {article.summary && (
-                            <p className="text-sm text-muted-foreground line-clamp-3 mb-6 leading-relaxed">
-                              {article.summary}
-                            </p>
-                          )}
-                          <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-auto">
-                            <span className="text-[12px] font-bold text-primary group-hover:translate-x-1 transition-transform inline-flex items-center">
-                              Read Article <Send className="ml-1.5 w-3 h-3" />
-                            </span>
-                            <div className="flex items-center gap-3 text-[12px] font-bold text-muted-foreground/70">
-                              <span className="flex items-center gap-1">
-                                <ThumbsUp className="w-3 h-3 text-emerald-500" /> {article.helpful}
-                              </span>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
+                        <div className="flex items-start justify-between mb-4">
+                          <span
+                            className="text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-lg"
+                            style={{ background: `${brand}14`, color: brand }}
+                          >
+                            {article.category}
+                          </span>
+                          <span className="text-[12px] text-muted-foreground flex items-center gap-1">
+                            <Eye className="w-3.5 h-3.5" />{article.views}
+                          </span>
+                        </div>
+                        <h3 className="font-semibold text-foreground text-base leading-snug mb-2 group-hover:text-primary transition-colors line-clamp-2">
+                          {article.title}
+                        </h3>
+                        {article.summary && (
+                          <p className="text-sm text-muted-foreground line-clamp-2 mb-4 leading-relaxed flex-1">
+                            {article.summary}
+                          </p>
+                        )}
+                        <div className="flex items-center justify-between pt-4 border-t border-border mt-auto">
+                          <span className="text-xs font-semibold flex items-center gap-1 transition-all group-hover:gap-2" style={{ color: brand }}>
+                            Read article <ArrowRight className="w-3.5 h-3.5" />
+                          </span>
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <ThumbsUp className="w-3 h-3 text-emerald-500" />{article.helpful}
+                          </span>
+                        </div>
+                      </article>
                     ))}
                   </div>
                 )}
@@ -434,327 +401,293 @@ export default function PublicHome() {
             )}
           </TabsContent>
 
-          {/* Ticket Creation Content */}
+          {/* ── CREATE TICKET TAB ── */}
           <TabsContent value="create" className="animate-fade-in focus-visible:outline-none">
-            <Card className="max-w-3xl mx-auto shadow-2xl rounded-3xl border-none overflow-hidden">
-              <CardHeader className="bg-primary/5 border-b py-10 px-8 text-center">
-                <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner ring-1 ring-primary/20">
-                  <Send className="w-8 h-8 text-primary" />
+            <div className="max-w-2xl mx-auto">
+              <div className="text-center mb-8">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: `${brand}15` }}>
+                  <Send className="w-6 h-6" style={{ color: brand }} />
                 </div>
-                <CardTitle className="text-3xl font-extrabold tracking-tight">Submit a Request</CardTitle>
-                <p className="text-muted-foreground mt-2 max-w-lg mx-auto">
-                  Provide as much detail as possible so our experts can assist you effectively.
+                <h2 className="text-2xl font-bold text-foreground">Submit a Support Request</h2>
+                <p className="text-sm text-muted-foreground mt-1.5 max-w-sm mx-auto">
+                  Describe your issue in detail and our team will respond promptly.
                 </p>
-              </CardHeader>
-              <CardContent className="p-8 lg:p-10">
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="customerName" className="font-bold text-foreground/80">Full Name</Label>
-                      <Input
-                        id="customerName"
-                        placeholder="John Doe"
-                        {...register("customerName")}
-                        className={`h-12 rounded-xl focus:ring-primary/20 ${errors.customerName ? "border-red-400 bg-red-50/30" : "bg-muted/30 border-none"}`}
+              </div>
+
+              <Card className="card-elevated rounded-2xl border border-border overflow-hidden">
+                <CardContent className="p-7 sm:p-9">
+                  <form onSubmit={handleSubmit((d) => createTicketMutation.mutate(d))} className="space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <Field label="Full Name" error={errors.customerName?.message}>
+                        <Input id="customerName" placeholder="Jane Smith" {...register("customerName")}
+                          className={`h-11 rounded-xl ${errors.customerName ? "border-red-400" : ""}`} />
+                      </Field>
+                      <Field label="Email Address" error={errors.customerContact?.message}>
+                        <Input id="customerContact" type="email" placeholder="jane@company.com" {...register("customerContact")}
+                          className={`h-11 rounded-xl ${errors.customerContact ? "border-red-400" : ""}`} />
+                      </Field>
+                    </div>
+
+                    <Field label="Subject" error={errors.subject?.message}>
+                      <Input id="subject" placeholder="Brief summary of your issue" {...register("subject")}
+                        className={`h-11 rounded-xl ${errors.subject ? "border-red-400" : ""}`} />
+                    </Field>
+
+                    <Field label="Description" error={errors.description?.message}>
+                      <Textarea
+                        id="description"
+                        placeholder="Please describe your issue in detail — include steps to reproduce, expected behaviour, and any relevant context…"
+                        rows={5}
+                        {...register("description")}
+                        className={`rounded-xl resize-none ${errors.description ? "border-red-400" : ""}`}
                       />
-                      {errors.customerName && (
-                        <p className="text-[12px] font-medium text-red-500">{errors.customerName.message}</p>
-                      )}
+                    </Field>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <Field label="Priority">
+                        <Select value={watchedPriority} onValueChange={(v) => setValue("priority", v as any)}>
+                          <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="low">Low — General inquiry</SelectItem>
+                            <SelectItem value="medium">Medium — Affecting work</SelectItem>
+                            <SelectItem value="high">High — Critical blocker</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field label="Contact Preference">
+                        <Select value={watchedChannel} onValueChange={(v) => setValue("channel", v as any)}>
+                          <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="email">Email</SelectItem>
+                            <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                            <SelectItem value="twitter">Twitter / X</SelectItem>
+                            <SelectItem value="facebook">Facebook</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Field>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="customerContact" className="font-bold text-foreground/80">Email Address</Label>
-                      <Input
-                        id="customerContact"
-                        type="email"
-                        placeholder="john@example.com"
-                        {...register("customerContact")}
-                        className={`h-12 rounded-xl focus:ring-primary/20 ${errors.customerContact ? "border-red-400 bg-red-50/30" : "bg-muted/30 border-none"}`}
-                      />
-                      {errors.customerContact && (
-                        <p className="text-[12px] font-medium text-red-500">{errors.customerContact.message}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="subject" className="font-bold text-foreground/80">Issue Subject</Label>
-                    <Input
-                      id="subject"
-                      placeholder="e.g. Trouble accessing server logs"
-                      {...register("subject")}
-                      className={`h-12 rounded-xl focus:ring-primary/20 ${errors.subject ? "border-red-400 bg-red-50/30" : "bg-muted/30 border-none"}`}
-                    />
-                    {errors.subject && (
-                      <p className="text-[12px] font-medium text-red-500">{errors.subject.message}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="description" className="font-bold text-foreground/80">Detailed Description</Label>
-                    <Textarea
-                      id="description"
-                      placeholder="Please explain the problem, what you've tried, and any relevant details..."
-                      rows={6}
-                      {...register("description")}
-                      className={`rounded-2xl focus:ring-primary/20 min-h-[160px] ${errors.description ? "border-red-400 bg-red-50/30" : "bg-muted/30 border-none"}`}
-                    />
-                    {errors.description && (
-                      <p className="text-[12px] font-medium text-red-500">{errors.description.message}</p>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label className="font-bold text-foreground/80">Priority Level</Label>
-                      <Select
-                        value={watchedPriority}
-                        onValueChange={(value) => setValue("priority", value as "low" | "medium" | "high")}
-                      >
-                        <SelectTrigger className="h-12 rounded-xl bg-muted/30 border-none">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-2xl shadow-xl">
-                          <SelectItem value="low" className="rounded-xl">Low - Routine inquiry</SelectItem>
-                          <SelectItem value="medium" className="rounded-xl">Medium - Issue affecting work</SelectItem>
-                          <SelectItem value="high" className="rounded-xl font-bold text-red-600">High - Critical blocker</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="font-bold text-foreground/80">Contact Preference</Label>
-                      <Select
-                        value={watchedChannel}
-                        onValueChange={(value) => setValue("channel", value as any)}
-                      >
-                        <SelectTrigger className="h-12 rounded-xl bg-muted/30 border-none">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-2xl shadow-xl">
-                          <SelectItem value="email" className="rounded-xl">Email</SelectItem>
-                          <SelectItem value="whatsapp" className="rounded-xl">WhatsApp</SelectItem>
-                          <SelectItem value="twitter" className="rounded-xl">Twitter/X</SelectItem>
-                          <SelectItem value="facebook" className="rounded-xl">Facebook</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="pt-6">
                     <Button
                       type="submit"
-                      className="w-full h-14 rounded-2xl text-lg font-bold bg-primary hover:bg-primary/95 shadow-xl transition-all active:scale-[0.98]"
                       disabled={createTicketMutation.isPending}
+                      className="w-full h-11 rounded-xl font-semibold text-sm gap-2 text-white"
+                      style={{ background: brand }}
                     >
-                      {createTicketMutation.isPending ? (
-                        <>
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                          Processing...
-                        </>
-                      ) : (
-                        <>
-                          Submit Now <Send className="ml-2 w-5 h-5" />
-                        </>
-                      )}
+                      {createTicketMutation.isPending
+                        ? <><Loader2 className="w-4 h-4 animate-spin" />Submitting…</>
+                        : <><Send className="w-4 h-4" />Submit Request</>
+                      }
                     </Button>
-                    <p className="text-center text-[12px] text-muted-foreground mt-4">
-                      By submitting, you agree to our privacy policy.
+
+                    <p className="text-center text-xs text-muted-foreground">
+                      By submitting you agree to our{" "}
+                      <a href="#" className="underline underline-offset-2 hover:text-foreground transition-colors">Privacy Policy</a>.
                     </p>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
+                  </form>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
-          {/* Ticket Status Content */}
+          {/* ── CHECK STATUS TAB ── */}
           <TabsContent value="status" className="animate-fade-in focus-visible:outline-none">
-            <div className="max-w-2xl mx-auto space-y-8 animate-slide-up">
-              <Card className="shadow-2xl rounded-3xl border-none overflow-hidden bg-background">
-                <CardHeader className="bg-muted/30 border-b pb-8 pt-10 px-8 text-center">
-                  <div className="w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner ring-1 ring-blue-500/20">
-                    <Search className="w-8 h-8 text-blue-500" />
-                  </div>
-                  <CardTitle className="text-3xl font-extrabold tracking-tight">Track Your Request</CardTitle>
-                  <p className="text-muted-foreground mt-2">
-                    Enter your details below to see real-time updates on your support ticket.
-                  </p>
-                </CardHeader>
-                <CardContent className="p-8 space-y-6">
-                  <div className="grid grid-cols-2 gap-2 p-1 bg-muted/30 rounded-2xl">
-                    <button 
-                      onClick={() => setSearchType("id")}
-                      className={`py-2.5 rounded-xl text-sm font-bold transition-all ${searchType === "id" ? "bg-white dark:bg-gray-800 shadow-md text-primary" : "text-muted-foreground"}`}
-                    >
-                      Ticket ID
-                    </button>
-                    <button 
-                      onClick={() => setSearchType("email")}
-                      className={`py-2.5 rounded-xl text-sm font-bold transition-all ${searchType === "email" ? "bg-white dark:bg-gray-800 shadow-md text-primary" : "text-muted-foreground"}`}
-                    >
-                      Email
-                    </button>
+            <div className="max-w-xl mx-auto space-y-6">
+              <div className="text-center mb-8">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: `${brand}15` }}>
+                  <Search className="w-6 h-6" style={{ color: brand }} />
+                </div>
+                <h2 className="text-2xl font-bold text-foreground">Track Your Request</h2>
+                <p className="text-sm text-muted-foreground mt-1.5">
+                  Enter your ticket ID or email address to see real-time updates.
+                </p>
+              </div>
+
+              <Card className="card-elevated rounded-2xl border border-border">
+                <CardContent className="p-7">
+                  {/* Toggle */}
+                  <div className="flex bg-background-secondary rounded-xl p-1 mb-5">
+                    {(["id", "email"] as const).map((type) => (
+                      <button
+                        key={type}
+                        onClick={() => setSearchType(type)}
+                        className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                          searchType === type
+                            ? "bg-card text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {type === "id" ? "Ticket ID" : "Email Address"}
+                      </button>
+                    ))}
                   </div>
 
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     <div className="relative">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <Input
-                        className="h-14 rounded-2xl pr-12 text-lg bg-muted/30 border-none font-medium"
-                        placeholder={searchType === "id" ? "Ex: ticket-123" : "Enter associated email..."}
+                        className="h-11 pl-10 rounded-xl"
+                        placeholder={searchType === "id" ? "e.g. TICKET-1234" : "e.g. jane@company.com"}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                        onKeyDown={(e) => e.key === "Enter" && !searchTicketsMutation.isPending && searchTicketsMutation.mutate({ query: searchQuery.trim(), type: searchType })}
                       />
-                      <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                     </div>
-
                     <Button
-                      onClick={handleSearch}
-                      className="w-full h-14 rounded-2xl text-lg font-bold shadow-lg transition-all active:scale-[0.98]"
-                      disabled={searchTicketsMutation.isPending}
+                      onClick={() => searchTicketsMutation.mutate({ query: searchQuery.trim(), type: searchType })}
+                      disabled={searchTicketsMutation.isPending || !searchQuery.trim()}
+                      className="w-full h-11 rounded-xl font-semibold text-sm gap-2 text-white"
+                      style={{ background: brand }}
                     >
-                      {searchTicketsMutation.isPending ? "Searching..." : "Track My Ticket"}
+                      {searchTicketsMutation.isPending
+                        ? <><Loader2 className="w-4 h-4 animate-spin" />Searching…</>
+                        : <><Search className="w-4 h-4" />Find My Ticket</>
+                      }
                     </Button>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Search Results Refined */}
+              {/* Results */}
               {searchResults.length > 0 && (
-                <div className="space-y-6 animate-slide-up">
-                  <div className="flex items-center justify-between px-2">
-                    <h3 className="text-xl font-extrabold flex items-center gap-2">
-                      <div className="w-2 h-6 bg-primary rounded-full" />
-                      Results Found ({searchResults.length})
-                    </h3>
-                  </div>
-                  {searchResults.map((ticket, idx) => (
-                    <Card key={ticket.id} className="group card-elevated rounded-3xl border-none shadow-xl overflow-hidden mb-4 [animation-delay:calc(val(idx)*100ms)]">
-                      <div className="flex flex-col md:flex-row">
-                        <div className="md:w-3 border-r bg-muted/30 group-hover:bg-primary transition-colors" />
-                        <CardContent className="p-7 flex-1">
-                          <div className="flex flex-col sm:flex-row items-start justify-between gap-4 mb-6">
-                            <div className="space-y-1">
-                              <h4 className="text-xl font-extrabold text-foreground group-hover:text-primary transition-colors">
-                                {ticket.subject}
-                              </h4>
-                              <p className="text-sm font-bold text-muted-foreground/60 uppercase tracking-widest">
-                                Ticket #{ticket.id}
-                              </p>
+                <div className="space-y-4 animate-slide-up">
+                  <p className="text-sm font-medium text-muted-foreground px-1">
+                    Found {searchResults.length} ticket{searchResults.length > 1 ? "s" : ""}
+                  </p>
+                  {searchResults.map((ticket) => {
+                    const statusStyle = {
+                      open: "bg-blue-50 text-blue-700 border-blue-200",
+                      "in-progress": "bg-amber-50 text-amber-700 border-amber-200",
+                      resolved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                      closed: "bg-gray-100 text-gray-600 border-gray-200",
+                    }[ticket.status] || "bg-gray-100 text-gray-600 border-gray-200";
+                    const priorityStyle = {
+                      high: "bg-red-50 text-red-700 border-red-200",
+                      medium: "bg-amber-50 text-amber-700 border-amber-200",
+                      low: "bg-green-50 text-green-700 border-green-200",
+                    }[ticket.priority] || "";
+
+                    return (
+                      <Card key={ticket.id} className="card-elevated rounded-2xl border border-border overflow-hidden">
+                        <div className="flex">
+                          <div className="w-1 flex-shrink-0" style={{ background: brand }} />
+                          <CardContent className="p-6 flex-1">
+                            <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                              <div>
+                                <h4 className="font-semibold text-foreground leading-tight">{ticket.subject}</h4>
+                                <p className="text-xs text-muted-foreground mt-0.5 font-mono">#{ticket.id}</p>
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${statusStyle}`}>
+                                  {ticket.status.replace("-", " ")}
+                                </span>
+                                <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${priorityStyle}`}>
+                                  {ticket.priority}
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge className={`px-3 py-1 rounded-lg text-[10px] uppercase font-black tracking-widest ${
-                                ticket.status === 'resolved' ? 'bg-emerald-100 text-emerald-700' :
-                                ticket.status === 'open' ? 'bg-blue-100 text-blue-700' :
-                                'bg-amber-100 text-amber-700'
-                              }`}>
-                                {ticket.status.replace("-", " ")}
-                              </Badge>
-                              <Badge className={`px-3 py-1 rounded-lg text-[10px] uppercase font-black tracking-widest ${
-                                ticket.priority === 'high' ? 'bg-red-100 text-red-700' :
-                                ticket.priority === 'medium' ? 'bg-amber-100 text-amber-700' :
-                                'bg-emerald-100 text-emerald-700'
-                              }`}>
-                                {ticket.priority}
-                              </Badge>
+                            <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{ticket.description}</p>
+                            <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground pt-4 border-t border-border">
+                              <span className="flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5" />
+                                {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString(undefined, { dateStyle: "medium" }) : "—"}
+                              </span>
+                              <span className="capitalize">{ticket.channel}</span>
+                              <span>{ticket.customerName || "Anonymous"}</span>
                             </div>
-                          </div>
-                          
-                          <p className="text-foreground/70 leading-relaxed mb-8 line-clamp-2">
-                            {ticket.description}
-                          </p>
-                          
-                          <div className="grid grid-cols-2 lg:grid-cols-3 gap-y-4 gap-x-8 pt-6 border-t border-gray-100">
-                            <div className="space-y-0.5">
-                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Submitted On</p>
-                              <p className="text-sm font-bold">{ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString(undefined, { dateStyle: 'long' }) : 'Unknown'}</p>
-                            </div>
-                            <div className="space-y-0.5">
-                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Channel</p>
-                              <p className="text-sm font-bold capitalize">{ticket.channel}</p>
-                            </div>
-                            <div className="space-y-0.5 col-span-2 lg:col-span-1">
-                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Customer</p>
-                              <p className="text-sm font-bold truncate">{ticket.customerName || 'Anonymous'}</p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </div>
-                    </Card>
-                  ))}
+                          </CardContent>
+                        </div>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </div>
           </TabsContent>
         </Tabs>
 
-        {/* Improved Call-to-Action / Contact */}
-        <div className="mt-32 relative text-center">
-          <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none">
-            <h2 className="text-[160px] font-black leading-none uppercase">Support</h2>
-          </div>
-          <div className="relative z-10 space-y-10">
-            <div className="space-y-4">
-              <h3 className="text-4xl font-extrabold tracking-tight text-foreground">
-                {whitelabelConfig?.contactSectionTitle || "Still have questions?"}
-              </h3>
-              <p className="text-muted-foreground text-lg max-w-xl mx-auto font-medium">
-                Our support experts are available around the clock to help you solve even the most complex technical challenges.
-              </p>
+        {/* ── CONTACT SECTION ── */}
+        <section className="mt-24 rounded-3xl border border-border bg-card overflow-hidden">
+          <div className="p-10 sm:p-14 text-center max-w-2xl mx-auto">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-5 surface-blue">
+              <Headphones className="w-6 h-6" />
             </div>
-            
-            <div className="flex flex-wrap justify-center gap-6">
-              <a href={`mailto:${whitelabelConfig?.supportEmail || "support@supporthub.com"}`} className="group p-6 rounded-3xl bg-card border hover:shadow-2xl hover:border-primary transition-all duration-300 w-full max-w-sm flex items-center gap-5 text-left">
-                <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center group-hover:bg-primary group-hover:rotate-6 transition-all">
-                  <Mail className="w-7 h-7 text-primary group-hover:text-white transition-colors" />
+            <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3 tracking-tight">
+              {wl?.contactSectionTitle || "Still need help?"}
+            </h2>
+            <p className="text-muted-foreground mb-8 leading-relaxed">
+              Our support team is available to assist you with anything not covered in the knowledge base.
+            </p>
+            <div className="flex flex-wrap justify-center gap-4">
+              <a
+                href={`mailto:${wl?.supportEmail || "support@supporthub.com"}`}
+                className="flex items-center gap-3 px-5 py-3.5 rounded-xl border border-border bg-background hover:border-border-strong hover:shadow-sm transition-all group"
+              >
+                <div className="w-9 h-9 rounded-lg surface-blue flex items-center justify-center flex-shrink-0">
+                  <Mail className="w-4.5 h-4.5" />
                 </div>
-                <div>
-                  <h4 className="font-extrabold text-foreground group-hover:text-primary transition-colors">Email Us</h4>
-                  <p className="text-sm font-bold text-muted-foreground">{whitelabelConfig?.supportEmail || "support@supporthub.com"}</p>
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-foreground">Email Support</p>
+                  <p className="text-xs text-muted-foreground">{wl?.supportEmail || "support@supporthub.com"}</p>
                 </div>
               </a>
-              
-              {whitelabelConfig?.isPhoneNumberEnabled && (
-                <a href={`tel:${whitelabelConfig?.supportPhone}`} className="group p-6 rounded-3xl bg-card border hover:shadow-2xl hover:border-primary transition-all duration-300 w-full max-w-sm flex items-center gap-5 text-left">
-                  <div className="w-14 h-14 bg-blue-500/10 rounded-2xl flex items-center justify-center group-hover:bg-blue-500 group-hover:-rotate-6 transition-all">
-                    <Phone className="w-7 h-7 text-blue-500 group-hover:text-white transition-colors" />
+
+              {wl?.isPhoneNumberEnabled && (
+                <a
+                  href={`tel:${wl.supportPhone}`}
+                  className="flex items-center gap-3 px-5 py-3.5 rounded-xl border border-border bg-background hover:border-border-strong hover:shadow-sm transition-all group"
+                >
+                  <div className="w-9 h-9 rounded-lg surface-green flex items-center justify-center flex-shrink-0">
+                    <Phone className="w-4.5 h-4.5" />
                   </div>
-                  <div>
-                    <h4 className="font-extrabold text-foreground group-hover:text-blue-500 transition-colors">Call Support</h4>
-                    <p className="text-sm font-bold text-muted-foreground">{whitelabelConfig?.supportPhone || "+1-800-SUPPORT"}</p>
+                  <div className="text-left">
+                    <p className="text-sm font-semibold text-foreground">Phone Support</p>
+                    <p className="text-xs text-muted-foreground">{wl.supportPhone}</p>
                   </div>
                 </a>
               )}
             </div>
-            
-            <div className="pt-8">
-              <Button variant="link" className="text-muted-foreground font-bold hover:text-primary transition-colors">
-                View detailed FAQs <BookOpen className="ml-2 w-4 h-4" />
-              </Button>
-            </div>
           </div>
-        </div>
+        </section>
       </main>
 
-      {/* Modern Footer */}
-      <footer className="border-t bg-card/50 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 py-8 lg:py-12 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center space-x-2 grayscale opacity-60">
-            <MessageSquare className="w-5 h-5" />
-            <span className="font-bold text-sm tracking-widest uppercase">SupportHub</span>
+      {/* ── FOOTER ── */}
+      <footer className="border-t border-border bg-background-secondary mt-8">
+        <div className="max-w-7xl mx-auto px-5 sm:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            {wl?.logoUrl ? (
+              <img src={wl.logoUrl} alt={wl.companyName || "Logo"} className="h-6 w-auto opacity-60 grayscale" />
+            ) : (
+              <div className="w-6 h-6 rounded-md flex items-center justify-center opacity-50" style={{ background: brand }}>
+                <Headphones className="w-3 h-3 text-white" />
+              </div>
+            )}
+            <span className="text-sm font-semibold text-muted-foreground">{wl?.companyName || "SupportHub"}</span>
           </div>
-          <div className="text-[13px] font-medium text-muted-foreground/60 text-center">
-            {whitelabelConfig?.footerText || "© 2024 SupportHub. All rights reserved. Premium Customer Experience Cloud."}
-          </div>
-          <div className="flex items-center gap-6">
-            <a href="#" className="text-[13px] font-bold text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-4">Privacy</a>
-            <a href="#" className="text-[13px] font-bold text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-4">Terms</a>
+
+          <p className="text-xs text-muted-foreground text-center">
+            {wl?.footerText || `© ${new Date().getFullYear()} ${wl?.companyName || "SupportHub"}. All rights reserved.`}
+          </p>
+
+          <div className="flex items-center gap-5">
+            <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy</a>
+            <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms</a>
           </div>
         </div>
       </footer>
-      
-      {/* Live Chat Widget Integration */}
+
       {isChatEnabled && <LiveChatWidget />}
+    </div>
+  );
+}
+
+function Field({
+  label, error, children,
+}: { label: string; error?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-sm font-medium text-foreground">{label}</Label>
+      {children}
+      {error && <p className="text-xs text-red-500">{error}</p>}
     </div>
   );
 }
