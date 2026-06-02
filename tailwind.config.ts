@@ -9,6 +9,9 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        xl: "calc(var(--radius) + 4px)",
+        "2xl": "calc(var(--radius) + 8px)",
+        "3xl": "calc(var(--radius) + 16px)",
       },
       colors: {
         background: "var(--background)",
@@ -67,8 +70,8 @@ export default {
         },
       },
       fontFamily: {
-        sans: ["Roboto", "sans-serif"],
-        roboto: ["Roboto", "sans-serif"],
+        sans: ["Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
+        mono: ["JetBrains Mono", "Fira Code", "Fira Mono", "Roboto Mono", "monospace"],
       },
       keyframes: {
         "accordion-down": {
