@@ -67,12 +67,14 @@ services:
       - certbot_www:/var/www/certbot
       - certbot_conf:/etc/letsencrypt
     entrypoint: [ "/bin/sh", "/nginx-entrypoint.sh" ]
+    environment:
+      DOMAIN: ${DOMAIN}
     depends_on:
       - app
     networks:
       - supporthub_network
     healthcheck:
-      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/api/health", "||", "exit", "1" ]
+      test: [ "CMD-SHELL", "wget -q --spider http://127.0.0.1/nginx-health || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3

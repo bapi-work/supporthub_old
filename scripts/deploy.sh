@@ -65,7 +65,8 @@ kill $LOG_PID 2>/dev/null
 if [ "$EXIT_CODE" == "0" ]; then
     echo -e "\n${GREEN}SSL Initialization successful.${NC}"
     echo -e "${GREEN}Reloading Nginx to apply certificates...${NC}"
-    docker compose -f compose.production.yml exec nginx nginx -s reload
+    # restart (not reload) so it also recovers if nginx is not currently running
+    docker compose -f compose.production.yml restart nginx
     echo -e "${GREEN}✅ Deployment Complete!${NC}"
     echo -e "${GREEN}Your site should be live at https://$DOMAIN${NC}"
 else

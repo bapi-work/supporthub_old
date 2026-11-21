@@ -53,6 +53,11 @@ fi
 
 export DOMAIN=$(echo "$DOMAIN" | tr -d '\r')
 
+if [ -z "$DOMAIN" ]; then
+    echo "❌ DOMAIN environment variable is empty - set it under the nginx service 'environment:' in compose" >&2
+    exit 1
+fi
+
 for file in /etc/nginx/conf.d/*.conf; do
     if [ -f "$file" ]; then
         echo "Processing $file..."
